@@ -1,4 +1,4 @@
-package com.example.myapplication;
+package io.github.stevenzack.wv;
 
 import org.junit.Test;
 

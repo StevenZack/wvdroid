@@ -1,4 +1,4 @@
-package com.example.myapplication;
+package io.github.stevenzack.wv;
 
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;
@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getTargetContext();
 
-        assertEquals("com.example.myapplication", appContext.getPackageName());
+        assertEquals("io.github.stevenzack.wv", appContext.getPackageName());
     }
 }
