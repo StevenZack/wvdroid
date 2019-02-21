@@ -5,43 +5,44 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
-import android.graphics.Bitmap;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.view.WindowManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
-import im.delight.android.webview.AdvancedWebView;
+import org.json.JSONObject;
+import org.json.JSONTokener;
 
-public class MyActivity extends Activity implements AdvancedWebView.Listener {
+import wvdroid.Bridge;
+import wvdroid.Wvdroid;
+
+
+public class MyActivity extends Activity  {
     protected static final FrameLayout.LayoutParams COVER_SCREEN_PARAMS = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-    private AdvancedWebView mWebView;
+    private WebView mWebView;
     private View customView;
     private FrameLayout fullscreenContainer;
     private WebChromeClient.CustomViewCallback customViewCallback;
-
+    private String base;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_my);
-
-        mWebView =  findViewById(R.id.webview);
-        mWebView.setListener(this, this);
-        WebSettings webSettings =mWebView.getSettings();
-        webSettings.setJavaScriptEnabled(true);
-        webSettings.setUseWideViewPort(true); // 关键点
-        webSettings.setAllowFileAccess(true); // 允许访问文件
-        webSettings.setSupportZoom(true); // 支持缩放
-        webSettings.setLoadWithOverviewMode(true);
-
+        mWebView =  new WebView(this);
+        setupWebView();
+        setContentView(mWebView);
         mWebView.setWebChromeClient(new WebChromeClient() {
-
             /*** 视频播放相关的方法 **/
-
             @Override
             public View getVideoLoadingProgressView() {
                 FrameLayout frameLayout = new FrameLayout(MyActivity.this);
@@ -59,9 +60,56 @@ public class MyActivity extends Activity implements AdvancedWebView.Listener {
                 hideCustomView();
             }
         });
-        mWebView.loadUrl("http://yinyuetai.com");
+        String wv_action = getIntent().getStringExtra("WV_ACTION");
+        if (wv_action == null || wv_action.isEmpty()) {
+            base="file:///android_asset/index.html";
+            mWebView.loadUrl(base);
+        }else if (wv_action.equals("OPEN_URL")){
+            base=getIntent().getStringExtra("URL");
+            mWebView.loadUrl(base);
+        } else if (wv_action.equals("LOAD_HTML")) {
+            String value=getIntent().getStringExtra("HTML");
+            base=value;
+            value = value.replace("#", "%23");
+            mWebView.loadData(value,"text/html; charset=UTF-8", null);
+        }
+        Wvdroid.init(new Bridge() {
+            @Override
+            public void eval(String s) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                    mWebView.evaluateJavascript(s, new ValueCallback<String>() {
+                        @Override
+                        public void onReceiveValue(String value) {
+                        }
+                    });
+                }
+            }
+        },base);
+    }
 
-        // ...
+    private void setupWebView() {
+        WebSettings webSettings =mWebView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setUseWideViewPort(true); // 关键点
+        webSettings.setAllowFileAccess(true); // 允许访问文件
+        webSettings.setSupportZoom(true); // 支持缩放
+        webSettings.setLoadWithOverviewMode(true);
+        webSettings.setAllowFileAccess(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            webSettings.setAllowFileAccessFromFileURLs(true);
+            webSettings.setAllowUniversalAccessFromFileURLs(true);
+        }
+        mWebView.setWebViewClient(new MyWebViewClient());
+    }
+
+    private String parseHTML(String string) {
+        try {
+            JSONObject object = (JSONObject) (new JSONTokener(string).nextValue());
+            return object.getString("Data");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
     /** 视频播放全屏 **/
     private void showCustomView(View view, WebChromeClient.CustomViewCallback callback) {
@@ -104,7 +152,6 @@ public class MyActivity extends Activity implements AdvancedWebView.Listener {
             super(ctx);
             setBackgroundColor(ctx.getResources().getColor(android.R.color.black));
         }
-
         @Override
         public boolean onTouchEvent(MotionEvent evt) {
             return true;
@@ -139,38 +186,90 @@ public class MyActivity extends Activity implements AdvancedWebView.Listener {
 
     @Override
     protected void onDestroy() {
-        mWebView.onDestroy();
-        // ...
+        if( mWebView!=null) {
+            // 如果先调用destroy()方法，则会命中if (isDestroyed()) return;这一行代码，需要先onDetachedFromWindow()，再
+            // destory()
+            ViewParent parent = mWebView.getParent();
+            if (parent != null) {
+                ((ViewGroup) parent).removeView(mWebView);
+            }
+            mWebView.stopLoading();
+            // 退出时调用此方法，移除绑定的服务，否则某些特定系统会报错
+            mWebView.getSettings().setJavaScriptEnabled(false);
+            mWebView.clearHistory();
+            mWebView.clearView();
+            mWebView.removeAllViews();
+            mWebView.destroy();
+        }
         super.onDestroy();
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent intent) {
         super.onActivityResult(requestCode, resultCode, intent);
-        mWebView.onActivityResult(requestCode, resultCode, intent);
-        // ...
     }
 
     @Override
     public void onBackPressed() {
-        if (!mWebView.onBackPressed()) { return; }
-        // ...
-        super.onBackPressed();
+        if (mWebView.canGoBack()) {
+            mWebView.goBack();
+        }else{
+            super.onBackPressed();
+        }
     }
 
-    @Override
-    public void onPageStarted(String url, Bitmap favicon) { }
+    public static final String TAG = "MyActivity";
+    class MyWebViewClient extends WebViewClient {
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                String url=request.getUrl().toString();
+                if (parseFuncs(url)) {
+                    return true;
+                }
+                if (Wvdroid.onLoadURL(url,base)) {
+                    return true;
+                }
+                startUrl(url);
+                return true;
+            }
+            return false;
+        }
 
-    @Override
-    public void onPageFinished(String url) { }
+        @Override
+        public boolean shouldOverrideUrlLoading(WebView view, String url) {
+            if (parseFuncs(url)) {
+                return true;
+            }
+            if (Wvdroid.onLoadURL(url,base)) {
+                return true;
+            }
+            startUrl(url);
+            return true;
+        }
+    }
 
-    @Override
-    public void onPageError(int errorCode, String description, String failingUrl) { }
-
-    @Override
-    public void onDownloadRequested(String url, String suggestedFilename, String mimeType, long contentLength, String contentDisposition, String userAgent) { }
-
-    @Override
-    public void onExternalPageRequest(String url) { }
-
+    private void startUrl(String url) {
+        Intent intent = new Intent(MyActivity.this, MyActivity.class);
+        intent.putExtra("WV_ACTION","OPEN_URL");
+        intent.putExtra("URL", url);
+        startActivity(intent);
+    }
+    private boolean parseFuncs(String url) {
+        switch (removeQuery(url)) {
+            case "wv://finish":
+                finish();
+                break;
+            default:
+                return false;
+        }
+        return true;
+    }
+    public static String removeQuery(String url) {
+        int i = url.indexOf("?");
+        if (i < 0) {
+            return url;
+        }
+        return url.substring(0, i);
+    }
 }
