@@ -4,14 +4,14 @@ type Bridge interface {
 	Eval(js string)
 }
 
-var bridge Bridge
+var bridgeMap = make(map[string]Bridge)
 
-func Init(b Bridge,base string) {
-	bridge = b
+func Init(b Bridge, base string) {
+	bridgeMap[base] = b
 }
 
 //return shouldOverrideUrlLoading
-//main entry url is file://android_assets/index.html
-func OnLoadURL(url,base string) bool {
+//main entry url is file://android_asset/index.html
+func OnLoadURL(url, base string) bool {
 	return false
 }
